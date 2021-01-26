@@ -1,0 +1,7 @@
+name = "AUNO_MODULE"
+description = "A Nadybot module to check comments on auno.org"
+version = "1.0.0"
+author = "Nadyita"
+github = "Nadybot/AUNO_MODULE"
+bot_type = "Nadybot"
+bot_version = "^5.0.0-beta1"
