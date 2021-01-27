@@ -1,6 +1,6 @@
 # Auno comment module
 
-This module lets you seach for comments on an item on auno.org
+This module lets you search for comments on an item on auno.org
 
 ## Usage
 
