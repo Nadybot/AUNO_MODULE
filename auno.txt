@@ -1,5 +1,0 @@
-To see all comments on auno for an item, use:
-<highlight><tab><symbol>auno <a href="itemref://165213/165213/200">Heavy Notum Tank Armor</a><end>
-
-To search for comments on auno for Miy's armor:
-<highlight><tab><symbol>auno miy's<end>

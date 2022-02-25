@@ -2,7 +2,9 @@
 
 namespace Nadybot\User\Modules\AUNO_MODULE;
 
-class AunoItem {
+use Spatie\DataTransferObject\DataTransferObject;
+
+class AunoItem extends DataTransferObject {
 	public int $lowId = 0;
 	public int $highId = 0;
 	public int $ql = 0;
