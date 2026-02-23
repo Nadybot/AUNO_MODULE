@@ -1,26 +1,27 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 namespace Nadybot\User\Modules\AUNO_MODULE;
 
-use function Amp\async;
-use function Amp\Future\{await};
 use Amp\Http\Client\{HttpClientBuilder, Request};
 use Amp\TimeoutCancellation;
 use Exception;
-use League\Uri\{Modifier};
-use Nadybot\Core\ParamClass\PItem;
-
 use Nadybot\Core\{
 	Attributes as NCA,
 	CmdContext,
+	Hydrator,
 	ModuleInstance,
+	ParamClass\PItem,
 	Safe,
 	Text,
 };
+use Nadybot\Core\Types\AccessLevel;
 use Nadybot\Modules\ITEMS_MODULE\{
 	ItemSearchResult,
 	ItemsController,
 };
+use Nadylib\Type;
 
 /**
  * @author Nadyita (RK5) <nadyita@hodorraid.org>
@@ -30,7 +31,7 @@ use Nadybot\Modules\ITEMS_MODULE\{
 	NCA\Instance(),
 	NCA\DefineCommand(
 		command: 'auno',
-		accessLevel: 'guest',
+		accessLevel: AccessLevel::Guest,
 		description: 'Search for comments on auno',
 	)
 ]
@@ -47,7 +48,7 @@ class AunoController extends ModuleInstance {
 	 * @param string     $search  The string to search for
 	 * @param CmdContext $context Where to send the reply yo
 	 *
-	 * @return AunoItem|null Either the item, or null if error or multiple choices presented
+	 * @return null|AunoItem Either the item, or null if error or multiple choices presented
 	 */
 	public function getItemFromSearch(string $search, CmdContext $context): ?AunoItem {
 		// If this is a search string, search the item database for low and high ql
@@ -79,11 +80,11 @@ class AunoController extends ModuleInstance {
 				$num = count($findings);
 				foreach ($findings as $item) {
 					$itemLink = $item->getLink($item->highql);
-					$blob .= '[' . Text::makeChatcmd('See Comments', "/tell <myname> auno {$itemLink}") . '] '.
+					$blob .= '[' . Text::makeChatcmd('See Comments', "/tell <myname> auno {$itemLink}") . '] ' .
 						"{$itemLink}\n";
 				}
 				if ($num === $this->itemsController->maxitems) {
-					$blob .= "\n\n<highlight>*Results have been limited to the first ".
+					$blob .= "\n\n<highlight>*Results have been limited to the first " .
 						"{$this->itemsController->maxitems} results.<end>";
 				}
 				$blob .= "\n\n";
@@ -108,7 +109,7 @@ class AunoController extends ModuleInstance {
 	 * @param string     $search  The text/object to search for
 	 * @param CmdContext $context Where to send the replies to
 	 *
-	 * @return AunoItem|null The search object or null
+	 * @return null|AunoItem The search object or null
 	 */
 	public function getItem(string $search, CmdContext $context): ?AunoItem {
 		try {
@@ -131,54 +132,29 @@ class AunoController extends ModuleInstance {
 		if ($item === null) {
 			return;
 		}
-		$jobs = [];
-		$jobs['low']= async($this->getAunoComments(...), $item->lowId);
-		// Download auno comments for low ID and high ID (if it's different to lowID) and merge them into 1
-		$comments = $this->getAunoComments($item->lowId);
-		if ($item->lowId !== $item->highId) {
-			$jobs['high'] = async($this->getAunoComments(...), $item->highId);
-		}
-		$jobComments = await($jobs);
-		$comments = $this->mergeComments(...$jobComments['low'], ...($jobComments['high']??[]));
+		$comments = $this->getAOGalaxyComments($item->lowId);
 
 		// Display them
 		$itemLink = $this->makeItem($item);
 		if (count($comments) === 0) {
-			$msg = 'No comments found on auno.org for ' . $itemLink;
+			$msg = 'No comments found for ' . $itemLink;
 			$context->reply($msg);
 			return;
 		}
+
 		$blobs = [];
 		$commentNum = 0;
 		foreach ($comments as $comment) {
-			$blobs []= sprintf(
-				"%02d - <highlight>%s<end> - <orange>%s<end>\n%s",
-				++$commentNum,
-				$comment->time,
-				$comment->user,
-				$comment->comment,
-			);
+			$blobs[] = $this->getCommentLine($comment, 0, $commentNum);
 		}
 		$blob = implode("\n\n<pagebreak>", $blobs);
 		$msg = Text::makeBlob(
-			count($blobs) . ' comments',
+			"{$commentNum} comments",
 			$blob,
-			count($blobs) . ' Auno comments for ' . $itemLink
+			"{$commentNum} Comments for {$itemLink}"
 		);
-		$msg .= " found on Auno for {$itemLink}";
+		$msg .= " found for {$itemLink}";
 		$context->reply($msg);
-	}
-
-	/**
-	 * Merge all given comments together
-	 *
-	 * @return list<AunoComment>
-	 */
-	public function mergeComments(AunoComment ...$comments): array {
-		usort($comments, static function (AunoComment $a, AunoComment $b): int {
-			return strcmp($a->time, $b->time);
-		});
-		return $comments;
 	}
 
 	/**
@@ -186,12 +162,12 @@ class AunoController extends ModuleInstance {
 	 *
 	 * @param int $itemId The ID of the item
 	 *
-	 * @return list<AunoComment> The parsed commments
+	 * @return list<AOGalaxyComment> The parsed commments
 	 */
-	public function getAunoComments(int $itemId): array {
-		$uri = Modifier::from('https://auno.org/ao/db.php')
-			->appendQueryParameters(['id' => $itemId]);
-		$request = new Request($uri->getUriString());
+	public function getAOGalaxyComments(int $itemId): array {
+		$uri = 'https://www.aogalaxy.com/_items/get_item_comments.php' .
+			"?itemAOID={$itemId}";
+		$request = new Request($uri);
 		$client = $this->http->build();
 		$request->setTcpConnectTimeout(5);
 		$request->setTlsHandshakeTimeout(5);
@@ -199,43 +175,20 @@ class AunoController extends ModuleInstance {
 		$response = $client->request($request, new TimeoutCancellation(10));
 
 		/** @var list<AunoComment> */
-		$comments = [];
+		$empty = [];
 		if ($response->getStatus() !== 200) {
-			return $comments;
+			return $empty;
 		}
 		$body = $response->getBody()->buffer(new TimeoutCancellation(10));
 		if ($body === '') {
-			return $comments;
+			return $empty;
 		}
-		$matches = Safe::pregMatch(
-			"|<legend>Comments</legend>\s*<table class='list' style='width: 100%'>(.+?)</table>|s",
-			$body,
-		);
-		if (count($matches) < 2) {
-			return $comments;
-		}
-		$pages = Safe::pregMatchAll(
-			'|'.
-				"<span style='text-decoration: underline; font-size: 110%'>\s*".
-					"(?<user>.+?) @ (?<time>\d{4}-\d{2}-\d{2} \d{2}:\d{2})\s*".
-				"</span>\s*".
-				"<br />\s*".
-				"<div style='margin-bottom: 20px'>\s*".
-					"(?<comment>.*?)\s*".
-				'</div>'.
-			'|s',
-			$matches[1],
-		);
-		if (count($pages) < 1) {
-			return $comments;
-		}
-		for ($i = 0; $i < count($pages[0]); $i++) {
-			$comment = new AunoComment(
-				user: $pages['user'][$i],
-				time: $pages['time'][$i],
-				comment: $pages['comment'][$i],
-			);
-			$comments []= $comment->cleanComment();
+		try {
+			$json = Safe::jsonDecode($body, Type\vec(Type\dict(Type\string(), Type\mixed())));
+			$comments = Hydrator::literalHydrateObjects(AOGalaxyComment::class, $json)->toArray();
+		} catch (Exception) {
+			// If we fail to parse the JSON, just return an empty array
+			return $empty;
 		}
 		return $comments;
 	}
@@ -249,5 +202,30 @@ class AunoController extends ModuleInstance {
 	 */
 	public function makeItem(AunoItem $item): string {
 		return Text::makeItem($item->lowId, $item->highId, $item->ql, $item->name);
+	}
+
+	/**
+	 * Format a comment and its children into a displayable string
+	 *
+	 * @param AOGalaxyComment $comment    The comment to format
+	 * @param int             $level      The current indentation level (for child comments)
+	 * @param int             $commentNum The current comment number (for numbering comments)
+	 *
+	 * @return string The formatted comment line with children
+	 */
+	private function getCommentLine(AOGalaxyComment $comment, int $level, int &$commentNum): string {
+		$indent = str_repeat('<tab>', $level);
+		$text = sprintf(
+			"%s%02d - <highlight>%s<end> - <orange>%s<end>\n%s",
+			$indent,
+			++$commentNum,
+			$comment->timestamp->format('Y-m-d'),
+			$comment->author,
+			$indent . implode("\n{$indent}", array_map(trim(...), explode("\n", $comment->cleanComment()))),
+		);
+		foreach ($comment->children as $child) {
+			$text .= "\n\n<pagebreak>" . $this->getCommentLine($child, $level + 1, $commentNum);
+		}
+		return $text;
 	}
 }
