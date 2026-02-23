@@ -43,7 +43,6 @@ class AOGalaxyComment {
 			'{https?://(?:(?:www\.)?auno\.org/ao/db\.php\?id=|(?:www\.)?aogalaxy\.com/_items/item\.php\?aoid=)(?<id>\d+)(?:&ql=(?<ql>\d+))?}s',
 			/** @param array{0:string,id:string,ql?:string} $matches */
 			static function (array $matches): string {
-				var_dump($matches);
 				$itemsController = Registry::getInstance(ItemsController::class);
 				$itemId = (int)$matches['id'];
 				$item = $itemsController->findById($itemId);

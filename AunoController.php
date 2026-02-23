@@ -15,6 +15,7 @@ use Nadybot\Core\{
 	ParamClass\PItem,
 	Safe,
 	Text,
+	Util,
 };
 use Nadybot\Core\Types\AccessLevel;
 use Nadybot\Modules\ITEMS_MODULE\{
@@ -30,9 +31,10 @@ use Nadylib\Type;
 #[
 	NCA\Instance(),
 	NCA\DefineCommand(
-		command: 'auno',
+		command: 'aog',
 		accessLevel: AccessLevel::Guest,
 		description: 'Search for comments on auno',
+		alias: ['auno'],
 	)
 ]
 class AunoController extends ModuleInstance {
@@ -64,7 +66,7 @@ class AunoController extends ModuleInstance {
 				return $lookup["{$item->lowid}-{$item->highid}"] = true;
 			}
 		);
-		// Nothing found? Errooooor
+		// Nothing found? Error
 		if (count($findings) === 0) {
 			$msg = "No items found matching <highlight>{$search}<end>.";
 			$context->reply($msg);
@@ -125,7 +127,7 @@ class AunoController extends ModuleInstance {
 		}
 	}
 
-	/** Search auno for comments on an item */
+	/** Search AOGalaxy for comments on an item */
 	#[NCA\HandlesCommand('auno')]
 	public function aunoCommand(CmdContext $context, string $search): void {
 		$item = $this->getItem($search, $context);
@@ -162,7 +164,7 @@ class AunoController extends ModuleInstance {
 	 *
 	 * @param int $itemId The ID of the item
 	 *
-	 * @return list<AOGalaxyComment> The parsed commments
+	 * @return list<AOGalaxyComment> The parsed comments
 	 */
 	public function getAOGalaxyComments(int $itemId): array {
 		$uri = 'https://www.aogalaxy.com/_items/get_item_comments.php' .
@@ -219,13 +221,33 @@ class AunoController extends ModuleInstance {
 			"%s%02d - <highlight>%s<end> - <orange>%s<end>\n%s",
 			$indent,
 			++$commentNum,
-			$comment->timestamp->format('Y-m-d'),
+			$comment->timestamp->format(Util::DATE),
 			$comment->author,
-			$indent . implode("\n{$indent}", array_map(trim(...), explode("\n", $comment->cleanComment()))),
+			$indent . implode(
+				"\n{$indent}",
+				array_map(
+					trim(...),
+					explode(
+						"\n",
+						$this->unwrapUrl(wordwrap($comment->cleanComment(), 80))
+					)
+				)
+			),
 		);
 		foreach ($comment->children as $child) {
 			$text .= "\n\n<pagebreak>" . $this->getCommentLine($child, $level + 1, $commentNum);
 		}
 		return $text;
+	}
+
+	private function unwrapUrl(string $url): string {
+		return Safe::pregReplaceCallback(
+			'{<a\s+href\s*=\s*.+?</a>}s',
+			/** @param array{0:string} $matches */
+			static function (array $matches): string {
+				return str_replace("\n", ' ', $matches[0]);
+			},
+			$url
+		);
 	}
 }
