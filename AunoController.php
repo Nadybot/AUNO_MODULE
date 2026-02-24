@@ -128,7 +128,7 @@ class AunoController extends ModuleInstance {
 	}
 
 	/** Search AOGalaxy for comments on an item */
-	#[NCA\HandlesCommand('auno')]
+	#[NCA\HandlesCommand('aog')]
 	public function aunoCommand(CmdContext $context, string $search): void {
 		$item = $this->getItem($search, $context);
 		if ($item === null) {
